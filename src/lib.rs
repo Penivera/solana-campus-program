@@ -260,3 +260,75 @@ pub fn format_comparison_summary(
     }
     lines.join("\n")
 }
+
+pub fn parse_account_ids_from_csv(content: &str) -> Vec<String> {
+    let mut lines = content.lines().map(str::trim).filter(|l| !l.is_empty());
+    let first_line = match lines.next() {
+        Some(line) => line,
+        None => return Vec::new(),
+    };
+
+    let first_row: Vec<&str> = first_line
+        .split(',')
+        .map(|s| s.trim().trim_matches(|c| c == '"' || c == '\''))
+        .collect();
+
+    let header_idx = first_row.iter().position(|col| {
+        let lower = col.to_ascii_lowercase();
+        matches!(
+            lower.as_str(),
+            "account_id"
+                | "account id"
+                | "account"
+                | "accounts"
+                | "account_ids"
+                | "address"
+                | "addresses"
+                | "pubkey"
+                | "pubkeys"
+                | "public_key"
+                | "public key"
+                | "id"
+        )
+    });
+
+    let mut ids = Vec::new();
+
+    if let Some(target_col) = header_idx {
+        for line in lines {
+            let cols: Vec<&str> = line
+                .split(',')
+                .map(|s| s.trim().trim_matches(|c| c == '"' || c == '\''))
+                .collect();
+            if let Some(&val) = cols.get(target_col) {
+                if !val.is_empty() {
+                    ids.push(val.to_string());
+                }
+            }
+        }
+    } else {
+        for val in first_row {
+            if !val.is_empty() {
+                ids.push(val.to_string());
+            }
+        }
+        for line in lines {
+            for val in line
+                .split(',')
+                .map(|s| s.trim().trim_matches(|c| c == '"' || c == '\''))
+            {
+                if !val.is_empty() {
+                    ids.push(val.to_string());
+                }
+            }
+        }
+    }
+
+    ids
+}
+
+pub fn load_account_ids_from_file(path: &str) -> Result<Vec<String>, String> {
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read file '{}': {}", path, e))?;
+    Ok(parse_account_ids_from_csv(&content))
+}

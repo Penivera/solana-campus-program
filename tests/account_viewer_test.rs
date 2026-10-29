@@ -1,6 +1,7 @@
 use account_viewer::{
     describe_account, describe_account_entry, format_comparison_summary, format_sol,
-    parse_rpc_response, validate_address, AccountInfo,
+    load_account_ids_from_file, parse_account_ids_from_csv, parse_rpc_response, validate_address,
+    AccountInfo,
 };
 use serde_json::json;
 
@@ -150,4 +151,90 @@ fn formats_comparison_summary_properly() {
     assert!(summary.contains("Data accounts: 1"));
     assert!(summary.contains("Unallocated / No data: 1"));
     assert!(summary.contains("Invalid addresses: 1"));
+}
+
+#[test]
+fn parses_account_ids_from_csv_without_header() {
+    let csv = "5ggTuwYT92FqEdBJqDKPMgq6QfAp7ihsvUpgFmq47KHd\n11111111111111111111111111111111\n";
+    let ids = parse_account_ids_from_csv(csv);
+    assert_eq!(
+        ids,
+        vec![
+            "5ggTuwYT92FqEdBJqDKPMgq6QfAp7ihsvUpgFmq47KHd",
+            "11111111111111111111111111111111"
+        ]
+    );
+}
+
+#[test]
+fn parses_account_ids_from_csv_with_header() {
+    let csv = "account_id\n5ggTuwYT92FqEdBJqDKPMgq6QfAp7ihsvUpgFmq47KHd\n11111111111111111111111111111111";
+    let ids = parse_account_ids_from_csv(csv);
+    assert_eq!(
+        ids,
+        vec![
+            "5ggTuwYT92FqEdBJqDKPMgq6QfAp7ihsvUpgFmq47KHd",
+            "11111111111111111111111111111111"
+        ]
+    );
+}
+
+#[test]
+fn parses_account_ids_from_csv_with_quotes_and_spaces() {
+    let csv = " \"account_id\" \n \"5ggTuwYT92FqEdBJqDKPMgq6QfAp7ihsvUpgFmq47KHd\" \n '11111111111111111111111111111111' \n\n";
+    let ids = parse_account_ids_from_csv(csv);
+    assert_eq!(
+        ids,
+        vec![
+            "5ggTuwYT92FqEdBJqDKPMgq6QfAp7ihsvUpgFmq47KHd",
+            "11111111111111111111111111111111"
+        ]
+    );
+}
+
+#[test]
+fn parses_account_ids_from_csv_comma_separated() {
+    let csv = "5ggTuwYT92FqEdBJqDKPMgq6QfAp7ihsvUpgFmq47KHd, 11111111111111111111111111111111";
+    let ids = parse_account_ids_from_csv(csv);
+    assert_eq!(
+        ids,
+        vec![
+            "5ggTuwYT92FqEdBJqDKPMgq6QfAp7ihsvUpgFmq47KHd",
+            "11111111111111111111111111111111"
+        ]
+    );
+}
+
+#[test]
+fn parses_account_ids_from_multi_column_csv() {
+    let csv = "label,account_id,active\nwallet,5ggTuwYT92FqEdBJqDKPMgq6QfAp7ihsvUpgFmq47KHd,true\nsystem,11111111111111111111111111111111,true\n";
+    let ids = parse_account_ids_from_csv(csv);
+    assert_eq!(
+        ids,
+        vec![
+            "5ggTuwYT92FqEdBJqDKPMgq6QfAp7ihsvUpgFmq47KHd",
+            "11111111111111111111111111111111"
+        ]
+    );
+}
+
+#[test]
+fn loads_account_ids_from_file_and_handles_missing_file() {
+    let temp_file = std::env::temp_dir().join("test_accounts_fixture.csv");
+    let content = "account_id\n5ggTuwYT92FqEdBJqDKPMgq6QfAp7ihsvUpgFmq47KHd\n11111111111111111111111111111111\n";
+    std::fs::write(&temp_file, content).unwrap();
+
+    let loaded = load_account_ids_from_file(temp_file.to_str().unwrap()).unwrap();
+    assert_eq!(
+        loaded,
+        vec![
+            "5ggTuwYT92FqEdBJqDKPMgq6QfAp7ihsvUpgFmq47KHd",
+            "11111111111111111111111111111111"
+        ]
+    );
+
+    let _ = std::fs::remove_file(temp_file);
+
+    let err = load_account_ids_from_file("non_existent_file_path_12345.csv").unwrap_err();
+    assert!(err.contains("Failed to read file"));
 }

@@ -2,8 +2,8 @@ use std::env;
 use std::process::ExitCode;
 
 use account_viewer::{
-    describe_account_entry, format_comparison_summary, get_multiple_accounts, validate_address,
-    AccountInfo, DEFAULT_RPC_URL,
+    describe_account_entry, format_comparison_summary, get_multiple_accounts,
+    load_account_ids_from_file, validate_address, AccountInfo, DEFAULT_RPC_URL,
 };
 
 fn main() -> ExitCode {
@@ -11,13 +11,57 @@ fn main() -> ExitCode {
 
     if args.len() == 1 && (args[0] == "--help" || args[0] == "-h") {
         println!("Usage: account-viewer <ADDRESS_1> <ADDRESS_2> [ADDITIONAL_ADDRESSES...]");
+        println!("       account-viewer <CSV_PATH>");
+        println!("       account-viewer --file <CSV_PATH>");
         println!();
-        println!("Inspect two or more Solana devnet accounts by public address.");
+        println!("Inspect two or more Solana devnet accounts by public address or CSV file.");
         return ExitCode::SUCCESS;
     }
 
-    if args.len() < 2 {
+    let mut file_path: Option<String> = None;
+    let mut addresses: Vec<String> = Vec::new();
+
+    let mut i = 0;
+    while i < args.len() {
+        let arg = &args[i];
+        if arg == "--file" || arg == "-f" || arg == "--csv" {
+            if i + 1 < args.len() {
+                file_path = Some(args[i + 1].clone());
+                i += 2;
+                continue;
+            } else {
+                eprintln!("Error: Flag '{}' requires a file path argument.", arg);
+                return ExitCode::FAILURE;
+            }
+        } else if let Some(path) = arg.strip_prefix("--file=") {
+            file_path = Some(path.to_string());
+        } else if let Some(path) = arg.strip_prefix("--csv=") {
+            file_path = Some(path.to_string());
+        } else if args.len() == 1 && (arg.ends_with(".csv") || std::path::Path::new(arg).is_file())
+        {
+            file_path = Some(arg.clone());
+        } else {
+            addresses.push(arg.clone());
+        }
+        i += 1;
+    }
+
+    if let Some(path) = file_path {
+        match load_account_ids_from_file(&path) {
+            Ok(file_addresses) => {
+                addresses.extend(file_addresses);
+            }
+            Err(err) => {
+                eprintln!("Error: {}", err);
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+
+    if addresses.len() < 2 {
         eprintln!("Usage: account-viewer <ADDRESS_1> <ADDRESS_2> [ADDITIONAL_ADDRESSES...]");
+        eprintln!("       account-viewer <CSV_PATH>");
+        eprintln!("       account-viewer --file <CSV_PATH>");
         eprintln!("Error: At least two public addresses are required.");
         return ExitCode::FAILURE;
     }
@@ -27,9 +71,9 @@ fn main() -> ExitCode {
     // Step 1: Pre-validate all addresses before making RPC request
     let mut valid_indices = Vec::new();
     let mut valid_addresses = Vec::new();
-    let mut results: Vec<Result<Option<AccountInfo>, String>> = Vec::with_capacity(args.len());
+    let mut results: Vec<Result<Option<AccountInfo>, String>> = Vec::with_capacity(addresses.len());
 
-    for (i, address) in args.iter().enumerate() {
+    for (i, address) in addresses.iter().enumerate() {
         match validate_address(address) {
             Ok(valid) => {
                 valid_indices.push(i);
@@ -62,7 +106,7 @@ fn main() -> ExitCode {
     let mut valid_entries = Vec::new();
     let mut invalid_entries = Vec::new();
 
-    for (address, result) in args.iter().zip(&results) {
+    for (address, result) in addresses.iter().zip(&results) {
         if result.is_ok() {
             valid_entries.push((address.as_str(), result));
         } else {
@@ -100,7 +144,7 @@ fn main() -> ExitCode {
     // Step 5: Print comparison summary between programs and data accounts
     println!();
     let summary_input: Vec<(&str, &Result<Option<AccountInfo>, String>)> =
-        args.iter().map(|s| s.as_str()).zip(&results).collect();
+        addresses.iter().map(|s| s.as_str()).zip(&results).collect();
     println!("{}", format_comparison_summary(&summary_input));
 
     if !invalid_entries.is_empty() {

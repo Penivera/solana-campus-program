@@ -23,9 +23,15 @@ cargo test
 ```
 
 ### Inspect Accounts
-Accepts two or more public addresses:
+Accepts two or more public addresses directly or via a CSV file:
 ```bash
+# Pass addresses directly
 cargo run -- <ADDRESS_1> <ADDRESS_2> [ADDITIONAL_ADDRESSES...]
+
+# Or pass a CSV file containing account IDs
+cargo run -- accounts.csv
+# or
+cargo run -- --file accounts.csv
 ```
 
 To specify an alternative devnet RPC endpoint:
